@@ -83,7 +83,7 @@ TONES = ["친근하고 편안한 말투", "전문적이고 신뢰감 있는 말�
 # 진료과별 심의 민감도 (사전심의 대상 및 특별 유의 진료과)
 HIGH_SENSITIVITY_DEPTS = {"피부과", "성형외과", "치과", "한방과", "비뇨의학과"}
 
-MODEL_OPTIONS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-1.5-flash"]
+MODEL_OPTIONS = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
 
 # 의료법 제56조 및 의료광고 자율심의기준 참고 - 금지/위험 표현 룰베이스
 # ※ 완전한 법적 판단 기준이 아니며, 실제 게재 전 반드시 자율심의기구 심의를 거쳐야 함
