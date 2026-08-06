@@ -64,12 +64,6 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # =========================================================================
 # 1. 상수 정의
 # =========================================================================
-DEPARTMENTS = [
-    "내과", "외과", "정형외과", "신경외과", "신경과", "산부인과", "소아청소년과",
-    "피부과", "성형외과", "안과", "이비인후과", "비뇨의학과", "치과", "정신건강의학과",
-    "재활의학과", "가정의학과", "한방과", "영상의학과", "건강검진센터", "기타(직접입력)",
-]
-
 PURPOSES = {
     "정보 전달": "질환/시술/검사에 대한 정확한 정보를 알기 쉽게 전달하는 글",
     "후기·리뷰": "환자 경험을 재구성한 신뢰감 있는 후기형 글 (실제 후기 인용 금지, 가상 사례로만 구성)",
@@ -79,9 +73,6 @@ PURPOSES = {
 }
 
 TONES = ["친근하고 편안한 말투", "전문적이고 신뢰감 있는 말투", "따뜻하고 공감적인 말투", "간결하고 정보 위주의 말투"]
-
-# 진료과별 심의 민감도 (사전심의 대상 및 특별 유의 진료과)
-HIGH_SENSITIVITY_DEPTS = {"피부과", "성형외과", "치과", "한방과", "비뇨의학과"}
 
 MODEL_OPTIONS = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
 
@@ -135,8 +126,6 @@ def init_session_state():
         "history": [],
         # step1 입력값 보존
         "input_topic": "",
-        "input_department": DEPARTMENTS[0],
-        "input_department_custom": "",
         "input_purpose": list(PURPOSES.keys())[0],
         "input_tone": TONES[0],
         "input_region": "",
@@ -242,16 +231,17 @@ def check_compliance_rule_based(text: str):
     return findings
 
 
-def check_compliance_ai(text: str, department: str):
+def check_compliance_ai(text: str):
     system_instruction = (
         "당신은 대한민국 의료법 제56조(의료광고의 금지 등) 및 의료광고 자율심의기준에 정통한 "
         "의료광고 심의 전문가입니다. 주어진 블로그 본문을 검토하여 위반 소지가 있는 표현을 찾아내고, "
         "합법적인 대체 표현을 제안하세요. 과장·단정적 효과 표현, 비교 우위 표현, 환자 후기·체험담 "
         "오남용, 환자 유인·알선성 표현, 미승인 신의료기술 암시 등을 중점적으로 확인하세요. "
+        "의료·건강과 무관한 일반 정보성 글이라면 해당 사항이 없을 수 있으니 무리하게 위반을 만들어내지 마세요. "
         "반드시 JSON 형식으로만 응답하세요."
     )
     prompt = f"""
-다음은 '{department}' 진료과 병원 블로그 본문입니다. 의료광고법 위반 소지를 검토해주세요.
+다음은 병원/의료 마케팅용으로 작성된 블로그 본문입니다. 의료광고법 위반 소지를 검토해주세요.
 
 [본문]
 {text}
@@ -273,23 +263,18 @@ issues가 없으면 빈 배열로 응답하세요.
 # 5. AI 생성 함수 (키워드/제목 → 구조 → 본문)
 # =========================================================================
 def generate_keywords_and_titles():
-    dept = (
-        st.session_state.input_department_custom
-        if st.session_state.input_department == "기타(직접입력)"
-        else st.session_state.input_department
-    )
     region_line = f"- 지역: {st.session_state.input_region} (지역 SEO 키워드 포함)" if st.session_state.input_region else ""
 
     system_instruction = (
-        "당신은 병원 블로그 SEO 전문가입니다. 네이버/구글 검색엔진 상위노출 로직을 분석하여 "
-        "실제 환자들이 검색할 법한 자연스러운 키워드와 클릭을 유도하는 제목을 제안합니다. "
+        "당신은 병원·의료기관 블로그 SEO 전문가입니다. 네이버/구글 검색엔진 상위노출 로직을 분석하여 "
+        "실제 독자(환자 및 일반인)들이 검색할 법한 자연스러운 키워드와 클릭을 유도하는 제목을 제안합니다. "
+        "주제가 특정 진료과의 시술/질환일 수도 있고, 건강 정보나 병원 운영·생활 정보 등 일반적인 주제일 수도 있습니다. "
         "의료광고법상 과장·단정적 표현은 절대 사용하지 않습니다. 반드시 JSON 형식으로만 응답하세요."
     )
     prompt = f"""
-아래 조건에 맞는 병원 블로그 글의 키워드와 제목 후보를 만들어주세요.
+아래 조건에 맞는 블로그 글의 키워드와 제목 후보를 만들어주세요.
 
 - 주제: {st.session_state.input_topic}
-- 진료과: {dept}
 {region_line}
 - 글의 목적/분위기: {st.session_state.input_purpose} ({PURPOSES[st.session_state.input_purpose]})
 - 톤앤매너: {st.session_state.input_tone}
@@ -308,13 +293,8 @@ def generate_keywords_and_titles():
 def generate_structure():
     kw = st.session_state.keywords_result
     title = st.session_state.selected_title
-    dept = (
-        st.session_state.input_department_custom
-        if st.session_state.input_department == "기타(직접입력)"
-        else st.session_state.input_department
-    )
     system_instruction = (
-        "당신은 병원 블로그 콘텐츠 기획 전문가입니다. 검색엔진 상위노출에 유리한 논리적 글 구조(H2 소제목 단위)를 "
+        "당신은 병원·의료기관 블로그 콘텐츠 기획 전문가입니다. 검색엔진 상위노출에 유리한 논리적 글 구조(H2 소제목 단위)를 "
         "설계합니다. 각 소제목은 핵심 내용 bullet 2~3개와 예상 글자 수를 포함합니다. "
         "의료 정보의 정확성과 의료광고법 준수를 최우선으로 합니다. 반드시 JSON 형식으로만 응답하세요."
     )
@@ -322,7 +302,6 @@ def generate_structure():
 아래 정보를 바탕으로 블로그 글의 목차(구조)를 설계해주세요.
 
 - 제목: {title}
-- 진료과: {dept}
 - 핵심 키워드: {kw.get('main_keyword', '')}
 - 서브 키워드: {', '.join(kw.get('sub_keywords', []))}
 - 목표 전체 글자 수: 약 {st.session_state.input_target_length}자
@@ -347,11 +326,6 @@ CTA 섹션에서는 특정 병원명을 언급하지 말고 '가까운 병원 �
 def generate_full_body():
     structure = st.session_state.structure_result
     title = st.session_state.selected_title
-    dept = (
-        st.session_state.input_department_custom
-        if st.session_state.input_department == "기타(직접입력)"
-        else st.session_state.input_department
-    )
     sections_text = "\n".join(
         f"- {s['heading']}: {', '.join(s['bullets'])} (키워드: {', '.join(s.get('keywords', []))}, 약 {s.get('estimated_chars', 300)}자)"
         for s in structure["sections"]
@@ -368,10 +342,9 @@ def generate_full_body():
         "절대 사용하지 않습니다. 실제 후기가 필요한 경우 '가상의 사례'임을 암시하는 자연스러운 표현으로 대체합니다."
     )
     prompt = f"""
-아래 목차를 바탕으로 병원 블로그 본문 전체를 작성해주세요. 마크다운 형식(## 소제목)을 사용하세요.
+아래 목차를 바탕으로 블로그 본문 전체를 작성해주세요. 마크다운 형식(## 소제목)을 사용하세요.
 
 - 제목: {title}
-- 진료과: {dept}
 - 톤앤매너: {st.session_state.input_tone}
 - 목표 글자 수: 약 {st.session_state.input_target_length}자
 
@@ -435,7 +408,7 @@ def render_sidebar():
             st.caption("※ 세션 임시 저장 - 브라우저를 새로고침하면 사라집니다.")
             for idx, item in enumerate(reversed(st.session_state.history)):
                 with st.expander(f"{item['created_at']} · {item['title'][:25]}"):
-                    st.caption(f"진료과: {item['department']} / {len(item['content'])}자")
+                    st.caption(f"{len(item['content'])}자")
                     st.download_button(
                         "다운로드 (.md)", data=item["content"],
                         file_name=f"blog_{item['created_at'].replace(':', '').replace(' ', '_')}.md",
@@ -459,22 +432,10 @@ def render_step1():
         value=st.session_state.input_topic, key="widget_topic",
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.session_state.input_department = st.selectbox(
-            "진료과", DEPARTMENTS,
-            index=DEPARTMENTS.index(st.session_state.input_department) if st.session_state.input_department in DEPARTMENTS else 0,
-            key="widget_department",
-        )
-        if st.session_state.input_department == "기타(직접입력)":
-            st.session_state.input_department_custom = st.text_input(
-                "진료과 직접 입력", value=st.session_state.input_department_custom, key="widget_department_custom"
-            )
-    with col2:
-        st.session_state.input_region = st.text_input(
-            "지역 (선택 - 입력 시 지역 SEO 키워드 포함, 예: 대구 수성구)",
-            value=st.session_state.input_region, key="widget_region",
-        )
+    st.session_state.input_region = st.text_input(
+        "지역 (선택 - 입력 시 지역 SEO 키워드 포함, 예: 대구 수성구)",
+        value=st.session_state.input_region, key="widget_region",
+    )
 
     st.markdown("**글의 목적·분위기**")
     st.session_state.input_purpose = st.radio(
@@ -493,17 +454,6 @@ def render_step1():
         st.session_state.input_target_length = st.slider(
             "목표 글자 수", min_value=1000, max_value=4000, step=250,
             value=st.session_state.input_target_length, key="widget_target_length",
-        )
-
-    dept_check = (
-        st.session_state.input_department_custom
-        if st.session_state.input_department == "기타(직접입력)"
-        else st.session_state.input_department
-    )
-    if dept_check in HIGH_SENSITIVITY_DEPTS:
-        st.info(
-            f"💡 **{dept_check}**는 의료광고 사전심의 민감 진료과입니다. 특히 전후사진, 비교 우위 표현, "
-            "환자 후기 관련 문구에 유의해서 검수해드리겠습니다."
         )
 
     st.markdown("")
@@ -650,15 +600,9 @@ def render_step4():
         )
     with col_d:
         if st.button("💾 이번 세션에 저장", use_container_width=True):
-            dept_val = (
-                st.session_state.input_department_custom
-                if st.session_state.input_department == "기타(직접입력)"
-                else st.session_state.input_department
-            )
             st.session_state.history.append({
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "title": st.session_state.selected_title,
-                "department": dept_val,
                 "content": edited,
             })
             st.success("이번 세션 기록에 저장했습니다. (사이드바에서 확인)")
@@ -700,13 +644,8 @@ def render_compliance_section(text: str):
 
     if st.button("🔍 검수 시작하기", type="primary"):
         rule_findings = check_compliance_rule_based(text)
-        dept_val = (
-            st.session_state.input_department_custom
-            if st.session_state.input_department == "기타(직접입력)"
-            else st.session_state.input_department
-        )
         with st.spinner("AI가 정밀 검토하는 중..."):
-            ai_result = check_compliance_ai(text, dept_val)
+            ai_result = check_compliance_ai(text)
         st.session_state.compliance_result = {"rule": rule_findings, "ai": ai_result}
         st.rerun()
 
