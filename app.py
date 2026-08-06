@@ -147,13 +147,19 @@ init_session_state()
 # =========================================================================
 # 3. Gemini 클라이언트 & 호출 함수
 # =========================================================================
-def get_client():
-    api_key = st.session_state.api_key
+def get_api_key():
+    """세션 입력 키 → Secrets 순으로 조회, 공백/줄바꿈은 자동 제거"""
+    api_key = (st.session_state.api_key or "").strip()
     if not api_key:
         try:
-            api_key = st.secrets.get("GEMINI_API_KEY", "")
+            api_key = (st.secrets.get("GEMINI_API_KEY", "") or "").strip()
         except Exception:
             api_key = ""
+    return api_key
+
+
+def get_client():
+    api_key = get_api_key()
     if not api_key:
         return None
     try:
@@ -161,6 +167,32 @@ def get_client():
     except Exception as e:
         st.error(f"Gemini 클라이언트 생성 실패: {e}")
         return None
+
+
+def test_api_key():
+    """사이드바 '키 연결 테스트' 버튼용 - 최소 호출로 키 유효성만 빠르게 확인"""
+    api_key = get_api_key()
+    if not api_key:
+        return False, "API 키가 입력되지 않았습니다."
+    if not api_key.startswith("AIza"):
+        return False, "키 형식이 일반적인 Google AI Studio 키(AIza로 시작)와 다릅니다. Vertex AI 키가 아닌지 확인해주세요."
+    try:
+        client = genai.Client(api_key=api_key)
+        client.models.generate_content(
+            model=st.session_state.model_name,
+            contents="안녕",
+            config=types.GenerateContentConfig(max_output_tokens=5),
+        )
+        return True, "정상적으로 연결되었습니다."
+    except Exception as e:
+        msg = str(e)
+        if "API_KEY_INVALID" in msg or "API key not valid" in msg:
+            return False, "키가 유효하지 않습니다. Google AI Studio(aistudio.google.com/apikey)에서 발급한 키인지, 복사 시 공백이 섞이지 않았는지 확인해주세요."
+        if "PERMISSION_DENIED" in msg:
+            return False, "키는 유효하지만 이 모델에 대한 권한이 없습니다. 모델을 변경해보세요."
+        if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+            return False, "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+        return False, f"연결 실패: {msg[:200]}"
 
 
 def call_gemini_json(prompt: str, system_instruction: str = ""):
@@ -378,6 +410,14 @@ def render_sidebar():
             help="모델별 가용 여부는 시기에 따라 달라질 수 있습니다. 오류 발생 시 다른 모델로 변경해보세요.",
             key="widget_model_name",
         )
+
+        if st.button("🔌 키 연결 테스트", use_container_width=True):
+            with st.spinner("연결 확인 중..."):
+                ok, msg = test_api_key()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
         st.divider()
         st.markdown("### 📊 진행 단계")
