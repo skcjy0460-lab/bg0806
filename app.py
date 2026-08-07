@@ -440,6 +440,8 @@ def render_sidebar():
             st.session_state.structure_result = None
             st.session_state.final_content = ""
             st.session_state.compliance_result = None
+            st.session_state.pop("widget_title_radio", None)
+            st.session_state.pop("widget_title_custom", None)
             st.rerun()
 
         if st.session_state.history:
@@ -503,8 +505,24 @@ def render_step1():
         if result:
             st.session_state.keywords_result = result
             st.session_state.selected_title = result.get("titles", [""])[0]
+            st.session_state.pop("widget_title_radio", None)
+            st.session_state.pop("widget_title_custom", None)
             st.session_state.step = 2
             st.rerun()
+
+
+def _sync_title_from_radio():
+    """라디오에서 제목을 선택하면 최종 선택값과 '직접 수정하기' 칸을 함께 동기화"""
+    chosen = st.session_state.widget_title_radio
+    st.session_state.selected_title = chosen
+    st.session_state.widget_title_custom = chosen
+
+
+def _sync_title_from_custom():
+    """'직접 수정하기' 칸에 입력하면 최종 선택값을 그 내용으로 갱신"""
+    typed = st.session_state.widget_title_custom.strip()
+    if typed:
+        st.session_state.selected_title = typed
 
 
 def render_step2():
@@ -527,15 +545,22 @@ def render_step2():
     st.markdown("---")
     st.markdown("**제목 후보 (하나를 선택하세요)**")
     titles = kw.get("titles", [])
-    choice = st.radio(
-        "제목", titles, index=titles.index(st.session_state.selected_title) if st.session_state.selected_title in titles else 0,
-        label_visibility="collapsed", key="widget_title_radio",
-    )
-    st.session_state.selected_title = choice
 
-    custom = st.text_input("직접 수정하기 (선택)", value=st.session_state.selected_title, key="widget_title_custom")
-    if custom.strip():
-        st.session_state.selected_title = custom.strip()
+    # 라디오/수정칸 위젯의 초기값을 현재 selected_title 기준으로 세팅 (최초 진입 또는 키워드 재생성 직후에만)
+    if "widget_title_radio" not in st.session_state or st.session_state.widget_title_radio not in titles:
+        st.session_state.widget_title_radio = st.session_state.selected_title if st.session_state.selected_title in titles else (titles[0] if titles else "")
+    if "widget_title_custom" not in st.session_state:
+        st.session_state.widget_title_custom = st.session_state.widget_title_radio
+
+    st.radio(
+        "제목", titles, label_visibility="collapsed",
+        key="widget_title_radio", on_change=_sync_title_from_radio,
+    )
+
+    st.text_input(
+        "직접 수정하기 (선택) - 위 후보 중 하나를 고르면 이 칸도 함께 바뀝니다",
+        key="widget_title_custom", on_change=_sync_title_from_custom,
+    )
 
     col_a, col_b, col_c = st.columns([1, 1, 2])
     with col_a:
@@ -549,6 +574,9 @@ def render_step2():
             if result:
                 st.session_state.keywords_result = result
                 st.session_state.selected_title = result.get("titles", [""])[0]
+                # 위젯 상태 초기화 - 다음 렌더링에서 새 제목 기준으로 재세팅되도록
+                st.session_state.pop("widget_title_radio", None)
+                st.session_state.pop("widget_title_custom", None)
                 st.rerun()
     with col_c:
         if st.button("📐 글 구조 설계하기", type="primary", use_container_width=True):
